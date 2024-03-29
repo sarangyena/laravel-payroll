@@ -5,6 +5,7 @@ use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\PayrollController;
 use App\Http\Controllers\ProfileController;
 use Illuminate\Support\Facades\Route;
+use SimpleSoftwareIO\QrCode\Facades\QrCode;
 
 Route::get('/', function () {
     return view('/auth/login');
@@ -26,8 +27,12 @@ Route::get('/employee/view', [EmployeeController::class, 'details'])->name('a-vi
 Route::post('/employee/ajax', [EmployeeController::class,'handleAjaxRequest']);
 Route::post('/image/upload', [ImageController::class, 'upload']);
 
-Route::get('/payroll/view', [PayrollController::class, 'details'])->name('a-payroll');
+Route::get('/employee/{id}', [EmployeeController::class, 'downloadImage'])->name('id');
 
+Route::get('/payroll/view', [PayrollController::class, 'details'])->name('a-payroll');
+Route::get('/qr-scanner', function(){
+    return view('qr-scanner');
+});
 
 Route::middleware('auth')->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');

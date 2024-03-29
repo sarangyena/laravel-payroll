@@ -9,6 +9,14 @@ use App\Models\Employee;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 use Illuminate\Http\Response;
+use Endroid\QrCode\Color\Color;
+use Endroid\QrCode\Encoding\Encoding;
+use Endroid\QrCode\ErrorCorrectionLevel;
+use Endroid\QrCode\QrCode;
+use Endroid\QrCode\RoundBlockSizeMode;
+use Endroid\QrCode\Writer\PngWriter;
+use Illuminate\Support\Facades\Storage;
+
 class EmployeeController extends Controller
 {
     /**
@@ -71,20 +79,38 @@ class EmployeeController extends Controller
             Employee::create($validated); 
 
             //Save image in Database
-            $employee = Employee::where('userId', $request->all()['userId'])->first();
+            $userId = $request->all()['userId'];
+            $name = $userId.'-'.time().'.'.$request->image->extension();
+            $employee = Employee::where('userId', $userId)->first();
             $id = $employee->id;
+            // Get the image data
+            $imageData = file_get_contents($request->file('image')->getRealPath());
+            //QR Code
+            $writer = new PngWriter();
+            $qrCode = QrCode::create($userId)
+                ->setEncoding(new Encoding('UTF-8'))
+                ->setErrorCorrectionLevel(ErrorCorrectionLevel::Low)
+                ->setSize(300)
+                ->setMargin(10)
+                ->setRoundBlockSizeMode(RoundBlockSizeMode::Margin)
+                ->setForegroundColor(new Color(0, 0, 0))
+                ->setBackgroundColor(new Color(255, 255, 255));
+            
+            $result = $writer->write($qrCode);
 
+            // Save it to a file
+            $result->saveToFile(public_path('images/'.$name));
+            $qrData = file_get_contents(public_path('images/'.$name));
+            $imagePath = 'images/' . $name; // Replace with your actual image path
+            Storage::disk('public')->delete($imagePath);
+            
+            // Save the image data to the database
             $image = new Image();
-            $imageName = $request->all()['userId'].'-'.time().'.'.$request->image->extension();  
-            if($request->all()['role'] == 'EMPLOYEE'){
-                $request->image->move(public_path('images/employee'), $imageName);
-                $image->file_path = '/images/employee/'.$imageName;
-            }else if($request->all()['role'] == 'ON-CALL'){
-                $request->image->move(public_path('images/on-call'), $imageName);
-                $image->file_path = '/images/on-call/'.$imageName;
-            }
             $image->user_id = $id;
-            $image->file_name = $imageName;
+            $image->image_name = $name;
+            $image->qr_name = $name;
+            $image->image_data = $imageData;
+            $image->qr_data = $qrData;
             $image->save();
 
             $payroll = new Payroll();
@@ -94,7 +120,6 @@ class EmployeeController extends Controller
             $payroll->rate = $request->all()['rate'];
             $payroll->rph = $request->all()['rate']/8+($request->all()['rate']/8)*0.2;
             $payroll->save();
-
 
             return redirect(route('employee.index'))->with('success', 'Successfully added employee.');
         } catch (\Exception $e) {
@@ -152,5 +177,19 @@ class EmployeeController extends Controller
             default:
                 return response('default');
         }
+    }
+
+    public function downloadImage(Request $request)
+    {   
+        $data = $request->all()['data'];
+        // Retrieve the image record from the database
+        $image = Image::findOrFail($data);
+        // Generate a unique filename for the downloaded image
+        $filename = $image->qr_name;
+        $imageData = $image->qr_data;
+        return response()->make($imageData, 200, [
+            'Content-Type' => 'application/octet-stream',
+            'Content-Disposition' => 'attachment; filename="'.$filename.'"',
+        ]); 
     }
 }
